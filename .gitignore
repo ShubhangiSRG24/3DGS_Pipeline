@@ -12,3 +12,13 @@ scene/
 *.pt
 *.h5
 __pycache__/
+# large artifacts
+data/
+output/
+renders/
+scene/
+*.pt
+*.pth
+*.h5
+*.mp4
+*.zip
