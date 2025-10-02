@@ -1,0 +1,14 @@
+*.pyc
+.vscode/
+build/
+tensorboard_3d/
+screenshots/
+data/
+output/
+renders/
+scene/
+*.mp4
+*.zip
+*.pt
+*.h5
+__pycache__/

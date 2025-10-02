@@ -1,0 +1,9 @@
+data/
+output/
+renders/
+scene/
+*.mp4
+*.zip
+__pycache__/
+*.pyc
+.git
