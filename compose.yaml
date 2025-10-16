@@ -1,0 +1,35 @@
+services:
+  gs:
+    image: ${IMAGE_REF:-gs-floaters:cu121}
+
+    build:
+      context: .
+      args:
+        ARCHS: "7.0;7.5;8.0;8.6;8.9"
+
+    pull_policy: always         # On AWS, with IMAGE_REF set to ECR
+
+    entrypoint: ["/workspace/app/entrypoint.sh"]
+
+    # GPU needs NVIDIA Container Toolkit 
+    runtime: nvidia
+    environment:
+      NVIDIA_VISIBLE_DEVICES: all
+
+      VIDEO_URL: ${VIDEO_URL:-}
+      PROJECT: ${PROJECT:-my-scene}
+      NUM_IMAGES: ${NUM_IMAGES:-120}
+      SKIP_EXTRACT: ${SKIP_EXTRACT:-0}
+      SKIP_SFM: ${SKIP_SFM:-0}
+      SKIP_DEPTH: ${SKIP_DEPTH:-0}
+      SKIP_TRAIN: ${SKIP_TRAIN:-0}
+      DEPTH_CKPT_URL: ${DEPTH_CKPT_URL:-}
+
+    volumes:
+      - ./data:/workspace/app/data
+      - ./Depth-Anything-V2/checkpoints:/workspace/app/Depth-Anything-V2/checkpoints
+      - ./output:/workspace/app/output
+
+    ipc: host
+    shm_size: "16g"
+    restart: "no"
