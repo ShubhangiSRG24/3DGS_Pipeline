@@ -2,9 +2,9 @@
 set -euo pipefail
 
 
-ts_now() { date -Iseconds; }                              # 2025-09-30T10:12:34+09:00
+ts_now() { date -Iseconds; }                              
 epoch() { date +%s; }                                     # seconds since epoch
-fmt_hms() {                                               # seconds -> HH:MM:SS
+fmt_hms() {                                               
   local s=${1:-0}; printf "%02d:%02d:%02d" $((s/3600)) $(((s%3600)/60)) $((s%60));
 }
 log() { echo -e "$@"; }
@@ -14,7 +14,6 @@ declare -A ST_START ST_END ST_DUR ST_STATUS
 for s in "${STAGES[@]}"; do ST_START[$s]=""; ST_END[$s]=""; ST_DUR[$s]=0; ST_STATUS[$s]="skipped"; done
 CURRENT_STAGE=""
 
-# Global start
 START_TS=$(epoch)
 START_HUMAN=$(ts_now)
 
@@ -35,7 +34,6 @@ finalize() {
   end_ts=$(epoch); end_human=$(ts_now)
   total=$(( end_ts - START_TS ))
 
-  # If error exists : show time/duration
   if [[ -n "${CURRENT_STAGE}" ]]; then
     local s="$CURRENT_STAGE"
     if [[ -n "${ST_START[$s]}" && -z "${ST_END[$s]}" ]]; then
@@ -90,7 +88,7 @@ stage_start() {
   CURRENT_STAGE="$s"
   ST_STATUS[$s]="running"
   ST_START[$s]="$(ts_now)"
-  __EPOCH_START=$(epoch)   # numeric start kept in a private var for duration calc
+  __EPOCH_START=$(epoch)  
   log "[$s][${ST_START[$s]}] START"
 }
 stage_end() {
@@ -105,12 +103,9 @@ stage_end() {
   __EPOCH_START=""
 }
 
-############################################
-# Inputs
-############################################
 VIDEO_URL="${VIDEO_URL:-}"          # auto-extract frames if provided
 NUM_IMAGES="${NUM_IMAGES:-120}"
-PROJECT="${PROJECT:-}"              # if empty, we auto-derive
+PROJECT="${PROJECT:-}"              # if empty, auto-derive
 SKIP_EXTRACT="${SKIP_EXTRACT:-0}"
 SKIP_SFM="${SKIP_SFM:-0}"
 SKIP_DEPTH="${SKIP_DEPTH:-0}"
@@ -122,8 +117,6 @@ CANON_CKPT="Depth-Anything-V2/checkpoints/depth_anything_v2_vitl.pth"
 
 #RUNPY="micromamba run -n gs python"
 RUNPY="python"
-
-# Project / Paths
 
 if [[ -z "${PROJECT}" ]]; then
   if [[ -n "${VIDEO_URL}" ]]; then
@@ -208,7 +201,6 @@ if [[ "${SKIP_DEPTH}" != "1" ]]; then
     fi
 
     stage_start "depth"
-    # Pass SCENE ROOT (NOT images/) as --base_dir
     ${RUNPY} Depth-Anything-V2/depth_scale.py --base_dir "${ABS_BASE}"
     stage_end "depth"
   fi
@@ -216,7 +208,7 @@ else
   log "[depth] skipped"
 fi
 
-# 4) Train (floaters)
+# 4) Train
 
 if [[ "${SKIP_TRAIN}" != "1" ]]; then
   if [[ ! -d "${ABS_BASE}" ]]; then

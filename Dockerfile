@@ -78,7 +78,7 @@ ENV DEBIAN_FRONTEND=noninteractive TZ=Etc/UTC \
     NVIDIA_VISIBLE_DEVICES=all NVIDIA_DRIVER_CAPABILITIES=compute,utility \
     PYTHONUNBUFFERED=1
 
-# runtime-only packages (checkpoint download)
+# runtime-only packages
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl ffmpeg colmap \
     libgl1 libglib2.0-0 libxext6 libsm6 libxrender1 \

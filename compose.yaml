@@ -16,15 +16,6 @@ services:
     environment:
       NVIDIA_VISIBLE_DEVICES: all
 
-      VIDEO_URL: ${VIDEO_URL:-}
-      PROJECT: ${PROJECT:-my-scene}
-      NUM_IMAGES: ${NUM_IMAGES:-120}
-      SKIP_EXTRACT: ${SKIP_EXTRACT:-0}
-      SKIP_SFM: ${SKIP_SFM:-0}
-      SKIP_DEPTH: ${SKIP_DEPTH:-0}
-      SKIP_TRAIN: ${SKIP_TRAIN:-0}
-      DEPTH_CKPT_URL: ${DEPTH_CKPT_URL:-}
-
     volumes:
       - ./data:/workspace/app/data
       - ./Depth-Anything-V2/checkpoints:/workspace/app/Depth-Anything-V2/checkpoints
