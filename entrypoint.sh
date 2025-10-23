@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Timing + logging helpers
 
 ts_now() { date -Iseconds; }                              # 2025-09-30T10:12:34+09:00
 epoch() { date +%s; }                                     # seconds since epoch
@@ -10,7 +9,6 @@ fmt_hms() {                                               # seconds -> HH:MM:SS
 }
 log() { echo -e "$@"; }
 
-# Stage bookkeeping
 STAGES=(extract sfm depth train)
 declare -A ST_START ST_END ST_DUR ST_STATUS
 for s in "${STAGES[@]}"; do ST_START[$s]=""; ST_END[$s]=""; ST_DUR[$s]=0; ST_STATUS[$s]="skipped"; done
@@ -20,7 +18,6 @@ CURRENT_STAGE=""
 START_TS=$(epoch)
 START_HUMAN=$(ts_now)
 
-# Paths (initialized later, but needed by finalize on early exit)
 PROJECT="${PROJECT:-}"
 BASE="data/${PROJECT:-unknown}"
 
@@ -38,13 +35,12 @@ finalize() {
   end_ts=$(epoch); end_human=$(ts_now)
   total=$(( end_ts - START_TS ))
 
-  # If we crashed during a stage, mark it as error and set an end time/duration
+  # If error exists : show time/duration
   if [[ -n "${CURRENT_STAGE}" ]]; then
     local s="$CURRENT_STAGE"
     if [[ -n "${ST_START[$s]}" && -z "${ST_END[$s]}" ]]; then
       ST_END[$s]="${end_human}"
-      # compute duration from recorded numeric start if available in shadow var
-      # fall back to 0 if not set
+      
       local _start_epoch="${__EPOCH_START:-$START_TS}"
       ST_DUR[$s]=$(( end_ts - _start_epoch ))
       ST_STATUS[$s]="error"
@@ -55,7 +51,7 @@ finalize() {
   file_csv="${BASE}/pipeline_times.csv"
   file_txt="${BASE}/pipeline_times.txt"
 
-  # Write CSV: one row per stage + TOTAL row
+  # CSV summary
   for s in "${STAGES[@]}"; do
     append_csv_row "$file_csv" "${PROJECT}" "${s}" \
       "${ST_START[$s]}" "${ST_END[$s]}" "${ST_DUR[$s]}" "$(fmt_hms ${ST_DUR[$s]})" "${ST_STATUS[$s]}"
@@ -82,7 +78,7 @@ finalize() {
     echo "======================================================"
   } > "${file_txt}"
 
-  # Also print summary to console
+  # Summary to console
   cat "${file_txt}"
 
   exit $exit_code
@@ -124,7 +120,8 @@ SKIP_TRAIN="${SKIP_TRAIN:-0}"
 DEPTH_CKPT_URL="${DEPTH_CKPT_URL:-}"
 CANON_CKPT="Depth-Anything-V2/checkpoints/depth_anything_v2_vitl.pth"
 
-RUNPY="micromamba run -n gs python"
+#RUNPY="micromamba run -n gs python"
+RUNPY="python"
 
 # Project / Paths
 

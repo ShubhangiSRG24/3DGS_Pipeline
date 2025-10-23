@@ -1,13 +1,13 @@
 services:
   gs:
-    image: ${IMAGE_REF:-gs-floaters:cu121}
+    env_file:
+      - run.env
+    image: gs-floaters:cu121
 
     build:
       context: .
       args:
-        ARCHS: "7.0;7.5;8.0;8.6;8.9"
-
-    pull_policy: always         # On AWS, with IMAGE_REF set to ECR
+        ARCHS: "8.0;8.6;8.9"
 
     entrypoint: ["/workspace/app/entrypoint.sh"]
 
