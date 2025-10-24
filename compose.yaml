@@ -12,7 +12,7 @@ services:
     entrypoint: ["/workspace/app/entrypoint.sh"]
 
     # GPU needs NVIDIA Container Toolkit 
-    runtime: nvidia
+    gpus: all
     environment:
       NVIDIA_VISIBLE_DEVICES: all
 

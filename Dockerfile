@@ -49,11 +49,17 @@ RUN micromamba run -n gs python -m pip install --upgrade pip && \
       --extra-index-url https://download.pytorch.org/whl/cu121 \
       torch==2.5.1+cu121 torchvision==0.20.1+cu121 torchaudio==2.5.1+cu121 && \
     micromamba run -n gs pip install --no-cache-dir \
-      faiss-gpu cupy-cuda12x==12.1.0 numpy==1.26.4 timm lpips plyfile opencv-python-headless joblib
+      faiss-gpu cupy-cuda12x==12.1.0 numpy==1.26.4 \
+      opencv-python-headless==4.11.0.86 \
+      timm lpips plyfile joblib
 
 # ESfM deps
-RUN if [ -f "Enhanced-Structure-from-Motion/requirements.txt" ]; then \
-      micromamba run -n gs pip install --no-cache-dir -r Enhanced-Structure-from-Motion/requirements.txt ; \
+RUN if [ -f Enhanced-Structure-from-Motion/requirements.txt ]; then \
+      sed -i 's/^opencv-python.*/opencv-python-headless==4.11.0.86/' Enhanced-Structure-from-Motion/requirements.txt && \
+      sed -i '/^[[:space:]]*matplotlib/d;/^[[:space:]]*pytest/d;/^[[:space:]]*black/d;/^[[:space:]]*flake8/d;/^[[:space:]]*mypy/d' Enhanced-Structure-from-Motion/requirements.txt && \
+      sed -i '/[Ll]ightglue/d' Enhanced-Structure-from-Motion/requirements.txt && \
+      micromamba run -n gs pip install --no-cache-dir -r Enhanced-Structure-from-Motion/requirements.txt && \
+      micromamba run -n gs pip install --no-deps "lightglue @ git+https://github.com/cvg/LightGlue.git@746fac2c042e05d1865315b1413419f1c1e7ba55"; \
     fi
 
 # Build reqs - CUDA extensions 
