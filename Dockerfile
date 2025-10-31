@@ -20,12 +20,15 @@ SHELL ["/bin/bash", "-lc"]
 ARG MAMBA_DOCKERFILE_ACTIVATE=1
 
 # Create env
-RUN micromamba create -y -n gs python=3.9.23 && micromamba clean -a -y
+# RUN micromamba create -y -n gs python=3.9.23 && micromamba clean -a -y
+RUN micromamba create -y -n gs -c conda-forge --strict-channel-priority \
+      python=3.9.* pip && \
+    micromamba clean -a -y
 ENV PATH=${MAMBA_ROOT_PREFIX}/envs/gs/bin:$PATH
 RUN echo "micromamba activate gs" >> ~/.bashrc
 
 # Code
-WORKDIR /workspace/app
+WORKDIR /workspace/app          
 COPY . /workspace/app
 RUN chmod +x /workspace/app/entrypoint.sh
 
@@ -70,6 +73,9 @@ RUN micromamba run -n gs pip install --no-cache-dir --no-build-isolation \
       ./submodules/diff-gaussian-rasterization \
       ./submodules/fused-ssim \
       ./submodules/simple-knn
+
+#remove build reqs
+RUN micromamba run -n gs pip uninstall -y ninja cmake setuptools wheel packaging || true
 
 # Clean the env
 RUN find ${MAMBA_ROOT_PREFIX}/envs/gs -type d -name "__pycache__" -prune -exec rm -rf {} + && \

@@ -16,7 +16,6 @@ __pycache__/
 data/
 output/
 renders/
-scene/
 *.pt
 *.pth
 *.h5
