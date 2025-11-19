@@ -1,11 +1,12 @@
 
-# FloaterGaussian Pipeline — Extract → ESFM → Depth → Train
+# FloaterGaussian Pipeline — Extract → ESFM → Depth → Train → Post processing
 
 Build a 3D Gaussian Splatting scene from a video in four stages:
 1) **Extract** frames  
 2) **ESFM (Enhanced Structure-from-Motion)**  
 3) **Depth extraction & scaling (Depth-Anything-V2)**  
 4) **Train** the Gaussian scene
+5) **Post process** apply rotation and convex hull to the training outputs
 
 ---
 
@@ -42,7 +43,7 @@ cd <REPO_NAME>
 
 # 1) Fresh Python environment (choose one)
 # --- conda ---
-# conda create -n gaussian_splatting python=3.10 -y
+# conda create -n gaussian_splatting python=3.9.23 -y
 # conda activate gaussian_splatting
 
 # 2) Install dependencies
