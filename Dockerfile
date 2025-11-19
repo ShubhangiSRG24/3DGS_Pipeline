@@ -52,7 +52,7 @@ RUN micromamba run -n gs python -m pip install --upgrade pip && \
     micromamba run -n gs pip install --no-cache-dir \
       faiss-gpu cupy-cuda12x==12.1.0 numpy==1.26.4 \
       opencv-python-headless==4.11.0.86 \
-      timm lpips plyfile joblib
+      timm lpips plyfile joblib concave_hull scipy
 
 # ESfM deps
 RUN if [ -f Enhanced-Structure-from-Motion/requirements.txt ]; then \
