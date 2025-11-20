@@ -9,6 +9,26 @@ Build a 3D Gaussian Splatting scene from a video in four stages:
 
 ---
 
+## 📚 Documentation
+
+### Quick Links
+- **[AWS Batch Guide](docs/aws/)** - Run on AWS with GPU instances
+- **[Docker Build Guide](docs/docker/BUILD.md)** - Build and deploy Docker image
+- **[Scripts Reference](scripts/README.md)** - Utility scripts documentation
+
+### AWS Batch Integration
+- [AWS Batch Setup](docs/aws/SETUP.md) - Initial configuration
+- [Quick Reference](docs/aws/QUICK_REFERENCE.md) - Commands and examples
+- [Cost Guide](docs/aws/COSTS.md) - Pricing and optimization
+- [Troubleshooting](docs/aws/TROUBLESHOOTING.md) - Common issues
+
+### Docker
+- [Build Guide](docs/docker/BUILD.md) - Build Docker image
+- [Troubleshooting](docs/docker/TROUBLESHOOTING.md) - Build issues
+- [Dockerfile Reference](docs/docker/DOCKERFILE_REFERENCE.md) - Technical details
+
+---
+
 ## Prerequisites
 - Ubuntu/Linux recommended
 - Python **3.9.23**

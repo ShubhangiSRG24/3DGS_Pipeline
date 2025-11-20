@@ -27,7 +27,7 @@ RUN echo "micromamba activate gs" >> ~/.bashrc
 # Code
 WORKDIR /workspace/app
 COPY . /workspace/app
-RUN chmod +x /workspace/app/entrypoint.sh
+RUN chmod +x /workspace/app/scripts/entrypoint.sh
 
 # CUDA link for builds
 RUN set -eux; \
@@ -39,20 +39,23 @@ ENV PATH=${CUDA_HOME}/bin:${PATH}
 ENV LD_LIBRARY_PATH=${CUDA_HOME}/lib64:${LD_LIBRARY_PATH}
 
 # Build
-ARG ARCHS="8.0;8.6;8.9"
+ARG ARCHS="7.0;7.5;8.0;8.6;8.9"
 ENV TORCH_CUDA_ARCH_LIST="${ARCHS}" FORCE_CUDA=1
 ENV PYTHONUNBUFFERED=1 PIP_NO_CACHE_DIR=1 PIP_DISABLE_PIP_VERSION_CHECK=1 \
-    PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=/workspace/app:${PYTHONPATH}
+    PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=/workspace/app
 
 # GPU Python deps
 RUN micromamba run -n gs python -m pip install --upgrade pip && \
     micromamba run -n gs pip install --no-cache-dir \
       --extra-index-url https://download.pytorch.org/whl/cu121 \
       torch==2.5.1+cu121 torchvision==0.20.1+cu121 torchaudio==2.5.1+cu121 && \
-    micromamba run -n gs pip install --no-cache-dir \
+    find ${MAMBA_ROOT_PREFIX}/envs/gs -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
+
+RUN micromamba run -n gs pip install --no-cache-dir \
       faiss-gpu cupy-cuda12x==12.1.0 numpy==1.26.4 \
       opencv-python-headless==4.11.0.86 \
-      timm lpips plyfile joblib
+      timm lpips plyfile joblib boto3 && \
+    find ${MAMBA_ROOT_PREFIX}/envs/gs -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
 
 # ESfM deps
 RUN if [ -f Enhanced-Structure-from-Motion/requirements.txt ]; then \
@@ -89,6 +92,7 @@ ENV DEBIAN_FRONTEND=noninteractive TZ=Etc/UTC \
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl ffmpeg colmap \
     libgl1 libglib2.0-0 libxext6 libsm6 libxrender1 \
+    awscli \
  && rm -rf /var/lib/apt/lists/*
 
 # Final Python env
@@ -104,8 +108,8 @@ ENV LD_LIBRARY_PATH=${CUDA_HOME}/lib64:${LD_LIBRARY_PATH}
 # Code
 WORKDIR /workspace/app
 COPY --from=builder /workspace/app /workspace/app
-RUN chmod +x /workspace/app/entrypoint.sh
+RUN chmod +x /workspace/app/scripts/entrypoint.sh
 
-ENV PYTHONPATH=/workspace/app:${PYTHONPATH}
+ENV PYTHONPATH=/workspace/app
 
-ENTRYPOINT ["/workspace/app/entrypoint.sh"]
+ENTRYPOINT ["/workspace/app/scripts/entrypoint.sh"]

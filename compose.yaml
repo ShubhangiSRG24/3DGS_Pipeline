@@ -2,12 +2,12 @@ services:
   gs:
     env_file:
       - run.env
-    image: gs-floaters:cu121
+    image: 3dgs/builder:latest
 
     build:
       context: .
       args:
-        ARCHS: "8.0;8.6;8.9"
+        ARCHS: "7.0;7.5;8.0;8.6;8.9"
 
     entrypoint: ["/workspace/app/entrypoint.sh"]
 
@@ -15,11 +15,19 @@ services:
     gpus: all
     environment:
       NVIDIA_VISIBLE_DEVICES: all
+      # AWS credentials (can also be set in run.env)
+      # AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
+      # AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
+      # AWS_REGION: ${AWS_REGION:-us-east-1}
+      # S3_INPUT_BUCKET: ${S3_INPUT_BUCKET}
+      # S3_OUTPUT_BUCKET: ${S3_OUTPUT_BUCKET}
 
     volumes:
       - ./data:/workspace/app/data
       - ./Depth-Anything-V2/checkpoints:/workspace/app/Depth-Anything-V2/checkpoints
       - ./output:/workspace/app/output
+      # Optional: mount AWS credentials from host
+      # - ~/.aws:/root/.aws:ro
 
     ipc: host
     shm_size: "16g"

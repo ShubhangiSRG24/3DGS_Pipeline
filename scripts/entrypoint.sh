@@ -111,6 +111,11 @@ SKIP_SFM="${SKIP_SFM:-0}"
 SKIP_DEPTH="${SKIP_DEPTH:-0}"
 SKIP_TRAIN="${SKIP_TRAIN:-0}"
 
+# S3 configuration
+S3_INPUT_BUCKET="${S3_INPUT_BUCKET:-}"      # S3 bucket/path for input images (e.g., s3://my-bucket/input/images)
+S3_OUTPUT_BUCKET="${S3_OUTPUT_BUCKET:-}"    # S3 bucket/path for output (e.g., s3://my-bucket/output)
+AWS_REGION="${AWS_REGION:-us-east-1}"
+
 # Depth checkpoint
 DEPTH_CKPT_URL="${DEPTH_CKPT_URL:-}"
 CANON_CKPT="Depth-Anything-V2/checkpoints/depth_anything_v2_vitl.pth"
@@ -139,6 +144,21 @@ log "[pipeline] start=${START_HUMAN}"
 log "[pipeline] project=${PROJECT}"
 log "[paths]    base=${BASE}  (abs=${ABS_BASE})"
 log "[paths]    images=${IMAGES} (abs=${ABS_IMAGES})"
+log "[debug]    SKIP_EXTRACT='${SKIP_EXTRACT}' SKIP_SFM='${SKIP_SFM}' SKIP_DEPTH='${SKIP_DEPTH}' SKIP_TRAIN='${SKIP_TRAIN}'"
+log "[debug]    S3_INPUT_BUCKET='${S3_INPUT_BUCKET}' S3_OUTPUT_BUCKET='${S3_OUTPUT_BUCKET}'"
+
+# Download images from S3 if S3_INPUT_BUCKET is set
+if [[ -n "${S3_INPUT_BUCKET}" ]]; then
+  log "[s3] Downloading images from ${S3_INPUT_BUCKET} to ${IMAGES}"
+  mkdir -p "${IMAGES}"
+  aws s3 sync "${S3_INPUT_BUCKET}" "${IMAGES}" --region "${AWS_REGION}" --quiet
+  IMG_COUNT=$(find "${IMAGES}" -type f \( -iname "*.jpg" -o -iname "*.jpeg" -o -iname "*.png" \) | wc -l)
+  log "[s3] Downloaded ${IMG_COUNT} images"
+  log "[debug] Image directory exists: $([ -d "${ABS_IMAGES}" ] && echo "YES" || echo "NO")"
+  if [[ -d "${ABS_IMAGES}" ]]; then
+    log "[debug] Image directory contents: $(ls -la "${ABS_IMAGES}" | head -5)"
+  fi
+fi
 
 
 # 1) Extract frames 
@@ -220,5 +240,30 @@ if [[ "${SKIP_TRAIN}" != "1" ]]; then
 else
   log "[train] skipped"
 fi
+
+# 5) Upload results to S3 if S3_OUTPUT_BUCKET is set
+if [[ -n "${S3_OUTPUT_BUCKET}" ]]; then
+  log "[s3] Uploading results to ${S3_OUTPUT_BUCKET}"
+  
+  # Upload the trained model outputs
+  if [[ -d "output" ]]; then
+    aws s3 sync "output" "${S3_OUTPUT_BUCKET}/${PROJECT}" --region "${AWS_REGION}" --quiet || log "[s3] Warning: output upload had issues"
+    log "[s3] Uploaded output folder"
+  else
+    log "[s3] No output folder to upload"
+  fi
+  
+  # Upload timing and logs
+  if [[ -f "${BASE}/pipeline_times.csv" ]]; then
+    aws s3 cp "${BASE}/pipeline_times.csv" "${S3_OUTPUT_BUCKET}/${PROJECT}/pipeline_times.csv" --region "${AWS_REGION}" --quiet || log "[s3] Warning: CSV upload had issues"
+    aws s3 cp "${BASE}/pipeline_times.txt" "${S3_OUTPUT_BUCKET}/${PROJECT}/pipeline_times.txt" --region "${AWS_REGION}" --quiet || log "[s3] Warning: TXT upload had issues"
+    log "[s3] Uploaded timing logs"
+  fi
+  
+  log "[s3] Upload complete"
+fi
+
+# Explicitly exit with success if we got this far
+exit 0
 
 

@@ -1,0 +1,86 @@
+{
+  "jobDefinitionName": "3dgs-pipeline-job",
+  "type": "container",
+  "platformCapabilities": ["EC2"],
+  "containerProperties": {
+    "image": "236357498583.dkr.ecr.ap-northeast-2.amazonaws.com/3dgs/builder:latest",
+    "vcpus": 8,
+    "memory": 32768,
+    "command": ["/bin/bash", "-c", "source /workspace/app/entrypoint.sh"],
+    "jobRoleArn": "arn:aws:iam::236357498583:role/BatchJobRole",
+    "executionRoleArn": "arn:aws:iam::236357498583:role/ecsTaskExecutionRole",
+    "resourceRequirements": [
+      {
+        "type": "GPU",
+        "value": "1"
+      }
+    ],
+    "environment": [
+      {
+        "name": "PROJECT",
+        "value": "scene"
+      },
+      {
+        "name": "SKIP_EXTRACT",
+        "value": "1"
+      },
+      {
+        "name": "SKIP_SFM",
+        "value": "0"
+      },
+      {
+        "name": "SKIP_DEPTH",
+        "value": "0"
+      },
+      {
+        "name": "SKIP_TRAIN",
+        "value": "0"
+      },
+      {
+        "name": "AWS_REGION",
+        "value": "ap-northeast-2"
+      },
+      {
+        "name": "AWS_DEFAULT_REGION",
+        "value": "ap-northeast-2"
+      }
+    ],
+    "mountPoints": [],
+    "volumes": [],
+    "ulimits": [
+      {
+        "hardLimit": 65536,
+        "name": "nofile",
+        "softLimit": 65536
+      }
+    ],
+    "linuxParameters": {
+      "devices": [],
+      "sharedMemorySize": 16384
+    },
+    "logConfiguration": {
+      "logDriver": "awslogs",
+      "options": {
+        "awslogs-group": "/aws/batch/3dgs-pipeline",
+        "awslogs-region": "ap-northeast-2",
+        "awslogs-stream-prefix": "3dgs"
+      }
+    }
+  },
+  "retryStrategy": {
+    "attempts": 2,
+    "evaluateOnExit": [
+      {
+        "action": "RETRY",
+        "onStatusReason": "Host EC2*"
+      },
+      {
+        "action": "EXIT",
+        "onExitCode": "0"
+      }
+    ]
+  },
+  "timeout": {
+    "attemptDurationSeconds": 43200
+  }
+}
