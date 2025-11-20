@@ -1,25 +1,19 @@
 #!/usr/bin/env bash
 set -euo pipefail
-
-
-ts_now() { date -Iseconds; }                              
+ts_now() { date -Iseconds; }
 epoch() { date +%s; }                                     # seconds since epoch
-fmt_hms() {                                               
+fmt_hms() {
   local s=${1:-0}; printf "%02d:%02d:%02d" $((s/3600)) $(((s%3600)/60)) $((s%60));
 }
 log() { echo -e "$@"; }
-
-STAGES=(extract sfm depth train)
+STAGES=(extract sfm depth train post)
 declare -A ST_START ST_END ST_DUR ST_STATUS
 for s in "${STAGES[@]}"; do ST_START[$s]=""; ST_END[$s]=""; ST_DUR[$s]=0; ST_STATUS[$s]="skipped"; done
 CURRENT_STAGE=""
-
 START_TS=$(epoch)
 START_HUMAN=$(ts_now)
-
 PROJECT="${PROJECT:-}"
 BASE="data/${PROJECT:-unknown}"
-
 append_csv_row() {
   local f="$1" project="$2" stage="$3" s_start="$4" s_end="$5" s_dur="$6" s_hms="$7" s_status="$8"
   if [[ ! -f "$f" ]]; then
@@ -27,28 +21,23 @@ append_csv_row() {
   fi
   echo "${project},${stage},${s_start},${s_end},${s_dur},${s_hms},${s_status}" >> "$f"
 }
-
 finalize() {
   local exit_code=$?
   local end_ts end_human total file_csv file_txt
   end_ts=$(epoch); end_human=$(ts_now)
   total=$(( end_ts - START_TS ))
-
   if [[ -n "${CURRENT_STAGE}" ]]; then
     local s="$CURRENT_STAGE"
     if [[ -n "${ST_START[$s]}" && -z "${ST_END[$s]}" ]]; then
       ST_END[$s]="${end_human}"
-      
       local _start_epoch="${__EPOCH_START:-$START_TS}"
       ST_DUR[$s]=$(( end_ts - _start_epoch ))
       ST_STATUS[$s]="error"
     fi
   fi
-
   mkdir -p "${BASE}"
   file_csv="${BASE}/pipeline_times.csv"
   file_txt="${BASE}/pipeline_times.txt"
-
   # CSV summary
   for s in "${STAGES[@]}"; do
     append_csv_row "$file_csv" "${PROJECT}" "${s}" \
@@ -56,14 +45,13 @@ finalize() {
   done
   append_csv_row "$file_csv" "${PROJECT}" "total" \
     "${START_HUMAN}" "${end_human}" "${total}" "$(fmt_hms ${total})" "completed"
-
   # Text summary
   {
-    echo "=================== TIMING SUMMARY ==================="
+    echo "==== TIMING SUMMARY ===="
     echo "Project:   ${PROJECT}"
     echo "Started:   ${START_HUMAN}"
     echo "Finished:  ${end_human}"
-    echo "------------------------------------------------------"
+    echo "------------------------"
     for s in "${STAGES[@]}"; do
       printf "%-8s  %s  (%s)\n" \
         "$(tr '[:lower:]' '[:upper:]' <<< "${s:0:1}")${s:1}" \
@@ -75,20 +63,17 @@ finalize() {
     echo "CSV:       ${file_csv}"
     echo "======================================================"
   } > "${file_txt}"
-
   # Summary to console
   cat "${file_txt}"
-
   exit $exit_code
 }
 trap finalize EXIT
-
 stage_start() {
   local s="$1"
   CURRENT_STAGE="$s"
   ST_STATUS[$s]="running"
   ST_START[$s]="$(ts_now)"
-  __EPOCH_START=$(epoch)  
+  __EPOCH_START=$(epoch)
   log "[$s][${ST_START[$s]}] START"
 }
 stage_end() {
@@ -102,7 +87,6 @@ stage_end() {
   CURRENT_STAGE=""
   __EPOCH_START=""
 }
-
 VIDEO_URL="${VIDEO_URL:-}"          # auto-extract frames if provided
 NUM_IMAGES="${NUM_IMAGES:-120}"
 PROJECT="${PROJECT:-}"              # if empty, auto-derive
@@ -119,10 +103,8 @@ AWS_REGION="${AWS_REGION:-us-east-1}"
 # Depth checkpoint
 DEPTH_CKPT_URL="${DEPTH_CKPT_URL:-}"
 CANON_CKPT="Depth-Anything-V2/checkpoints/depth_anything_v2_vitl.pth"
-
 #RUNPY="micromamba run -n gs python"
 RUNPY="python"
-
 if [[ -z "${PROJECT}" ]]; then
   if [[ -n "${VIDEO_URL}" ]]; then
     bn="$(basename "${VIDEO_URL}")"
@@ -131,15 +113,13 @@ if [[ -z "${PROJECT}" ]]; then
     PROJECT="proj-$(date +%Y%m%d-%H%M%S)"
   fi
 fi
-
 BASE="data/${PROJECT}"                  # scene root
 IMAGES="${BASE}/images"
 mkdir -p "${IMAGES}"
-
 # Absolute paths
 ABS_BASE="$(readlink -f "${BASE}")"
 ABS_IMAGES="${ABS_BASE}/images"
-
+ABS_OUTPUT="/workspace/app/output"
 log "[pipeline] start=${START_HUMAN}"
 log "[pipeline] project=${PROJECT}"
 log "[paths]    base=${BASE}  (abs=${ABS_BASE})"
@@ -160,8 +140,7 @@ if [[ -n "${S3_INPUT_BUCKET}" ]]; then
   fi
 fi
 
-
-# 1) Extract frames 
+# 1) Extract frames
 if [[ "${SKIP_EXTRACT}" != "1" ]]; then
   stage_start "extract"
   if [[ -n "${VIDEO_URL}" ]]; then
@@ -175,9 +154,7 @@ if [[ "${SKIP_EXTRACT}" != "1" ]]; then
 else
   log "[extract] skipped"
 fi
-
 # 2) SfM (COLMAP)
-
 if [[ "${SKIP_SFM}" != "1" ]]; then
   if [[ ! -d "${ABS_IMAGES}" ]]; then
     log "[sfm] ERROR: expected '${ABS_IMAGES}' but it doesn't exist."; exit 1
@@ -192,10 +169,7 @@ if [[ "${SKIP_SFM}" != "1" ]]; then
 else
   log "[sfm] skipped"
 fi
-
-
-# 3) Depth-Anything V2 scaling 
-
+# 3) Depth-Anything V2 scaling
 if [[ "${SKIP_DEPTH}" != "1" ]]; then
   mkdir -p "Depth-Anything-V2/checkpoints" "checkpoints"
   if [[ ! -f "${CANON_CKPT}" ]]; then
@@ -211,15 +185,12 @@ if [[ "${SKIP_DEPTH}" != "1" ]]; then
       SKIP_DEPTH=1
     fi
   fi
-
   if [[ "${SKIP_DEPTH}" != "1" ]]; then
     ln -sfn "../Depth-Anything-V2/checkpoints/depth_anything_v2_vitl.pth" \
             "checkpoints/depth_anything_v2_vitl.pth"
-
     if [[ ! -d "${ABS_IMAGES}" ]]; then
       log "[depth] ERROR: expected '${ABS_IMAGES}' but it doesn't exist."; exit 1
     fi
-
     stage_start "depth"
     ${RUNPY} Depth-Anything-V2/depth_scale.py --base_dir "${ABS_BASE}"
     stage_end "depth"
@@ -227,9 +198,7 @@ if [[ "${SKIP_DEPTH}" != "1" ]]; then
 else
   log "[depth] skipped"
 fi
-
 # 4) Train
-
 if [[ "${SKIP_TRAIN}" != "1" ]]; then
   if [[ ! -d "${ABS_BASE}" ]]; then
     log "[train] ERROR: scene root '${ABS_BASE}' not found."; exit 1
@@ -240,6 +209,57 @@ if [[ "${SKIP_TRAIN}" != "1" ]]; then
 else
   log "[train] skipped"
 fi
+
+# 5) Post-process concave hull
+if [[ "${SKIP_POST:-0}" != "1" ]]; then
+  stage_start "post"
+  # UUse newest Model_* directory in /workspace/app/output
+  LATEST_MODEL_DIR="$(ls -1dt "${ABS_OUTPUT}"/Model_* 2>/dev/null | head -n1 || true)"
+  if [[ -z "${LATEST_MODEL_DIR}" ]]; then
+    log "[post] No Model_* directory in ${ABS_OUTPUT} — nothing to process"
+    ST_STATUS[post]="skipped"
+    stage_end "post"
+  else
+    # point_cloud.ply 
+    if [[ -f "${LATEST_MODEL_DIR}/point_cloud/iteration_30000/point_cloud.ply" ]]; then
+      PLY_IN="${LATEST_MODEL_DIR}/point_cloud/iteration_30000/point_cloud.ply"
+    else
+      ITER_DIR="$(ls -1d "${LATEST_MODEL_DIR}/point_cloud"/iteration_* 2>/dev/null | sort -V | tail -n1 || true)"
+      if [[ -n "${ITER_DIR}" && -f "${ITER_DIR}/point_cloud.ply" ]]; then
+        PLY_IN="${ITER_DIR}/point_cloud.ply"
+      else
+        log "[post] No point_cloud.ply found under ${LATEST_MODEL_DIR}/point_cloud"
+        ST_STATUS[post]="skipped"
+        stage_end "post"
+        exit 0
+      fi
+    fi
+    # cameras.json
+    # Common locations tried in order:
+    for c in \
+      "${LATEST_MODEL_DIR}/cameras.json" \
+      "${LATEST_MODEL_DIR}/scene/cameras.json"
+    do
+      [[ -z "${CAM_JSON:-}" && -f "$c" ]] && CAM_JSON="$c"
+    done
+    if [[ -z "${CAM_JSON:-}" ]]; then
+      log "[post] cameras.json not found inside ${LATEST_MODEL_DIR}"
+      ST_STATUS[post]="error"
+      exit 1
+    fi
+    # Output result (override with POST_OUT if you want a different path)
+    OUT_PLY="${POST_OUT:-${LATEST_MODEL_DIR}/a.ply}"
+    log "[post] input  = ${PLY_IN}"
+    log "[post] cams   = ${CAM_JSON}"
+    log "[post] output = ${OUT_PLY}"
+    ${RUNPY} /workspace/app/PLYRotConcaveHull.py -i "${PLY_IN}" -c "${CAM_JSON}" -o "${OUT_PLY}"
+    log "[post] wrote: ${OUT_PLY}"
+    stage_end "post"
+  fi
+else
+  log "[post] skipped"
+fi
+
 
 # 5) Upload results to S3 if S3_OUTPUT_BUCKET is set
 if [[ -n "${S3_OUTPUT_BUCKET}" ]]; then

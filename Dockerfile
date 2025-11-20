@@ -54,7 +54,7 @@ RUN micromamba run -n gs python -m pip install --upgrade pip && \
 RUN micromamba run -n gs pip install --no-cache-dir \
       faiss-gpu cupy-cuda12x==12.1.0 numpy==1.26.4 \
       opencv-python-headless==4.11.0.86 \
-      timm lpips plyfile joblib boto3 && \
+      timm lpips plyfile joblib boto3 concave_hull scipy && \
     find ${MAMBA_ROOT_PREFIX}/envs/gs -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
 
 # ESfM deps
