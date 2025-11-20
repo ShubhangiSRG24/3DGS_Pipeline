@@ -65,6 +65,29 @@ finalize() {
   } > "${file_txt}"
   # Summary to console
   cat "${file_txt}"
+
+  # Upload to S3 if configured
+  if [[ -n "${S3_OUTPUT_BUCKET}" ]]; then
+    log "[s3] Uploading results to ${S3_OUTPUT_BUCKET}"
+    
+    # Upload the trained model outputs
+    if [[ -d "output" ]]; then
+      aws s3 sync "output" "${S3_OUTPUT_BUCKET}/${PROJECT}" --region "${AWS_REGION}" --quiet || log "[s3] Warning: output upload had issues"
+      log "[s3] Uploaded output folder"
+    else
+      log "[s3] No output folder to upload"
+    fi
+    
+    # Upload timing and logs
+    if [[ -f "${file_csv}" ]]; then
+      aws s3 cp "${file_csv}" "${S3_OUTPUT_BUCKET}/${PROJECT}/pipeline_times.csv" --region "${AWS_REGION}" --quiet || log "[s3] Warning: CSV upload had issues"
+      aws s3 cp "${file_txt}" "${S3_OUTPUT_BUCKET}/${PROJECT}/pipeline_times.txt" --region "${AWS_REGION}" --quiet || log "[s3] Warning: TXT upload had issues"
+      log "[s3] Uploaded timing logs"
+    fi
+    
+    log "[s3] Upload complete"
+  fi
+
   exit $exit_code
 }
 trap finalize EXIT
@@ -117,7 +140,12 @@ BASE="data/${PROJECT}"                  # scene root
 IMAGES="${BASE}/images"
 mkdir -p "${IMAGES}"
 # Absolute paths
-ABS_BASE="$(readlink -f "${BASE}")"
+if [[ "$(uname)" == "Darwin" ]]; then
+  # macOS doesn't have readlink -f
+  ABS_BASE="$(cd "${BASE}" && pwd)"
+else
+  ABS_BASE="$(readlink -f "${BASE}")"
+fi
 ABS_IMAGES="${ABS_BASE}/images"
 ABS_OUTPUT="/workspace/app/output"
 log "[pipeline] start=${START_HUMAN}"
@@ -176,7 +204,11 @@ if [[ "${SKIP_DEPTH}" != "1" ]]; then
     if [[ -n "${DEPTH_CKPT_URL}" ]]; then
       log "[depth] downloading checkpoint..."
       curl -L --fail --progress-bar -o "${CANON_CKPT}" "${DEPTH_CKPT_URL}"
-      SZ=$(stat -c%s "${CANON_CKPT}" || echo 0)
+      if [[ "$(uname)" == "Darwin" ]]; then
+        SZ=$(stat -f%z "${CANON_CKPT}" 2>/dev/null || echo 0)
+      else
+        SZ=$(stat -c%s "${CANON_CKPT}" 2>/dev/null || echo 0)
+      fi
       if (( SZ < 10*1024*1024 )); then
         log "[depth] ERROR: downloaded file too small (${SZ} bytes) — check DEPTH_CKPT_URL/network"; exit 1
       fi
@@ -204,7 +236,7 @@ if [[ "${SKIP_TRAIN}" != "1" ]]; then
     log "[train] ERROR: scene root '${ABS_BASE}' not found."; exit 1
   fi
   stage_start "train"
-  ${RUNPY} trainFloaters.py -s "${ABS_BASE}"
+  ${RUNPY} trainFloaters.py -s "${ABS_BASE}" -m "${ABS_OUTPUT}"
   stage_end "train"
 else
   log "[train] skipped"
@@ -213,76 +245,79 @@ fi
 # 5) Post-process concave hull
 if [[ "${SKIP_POST:-0}" != "1" ]]; then
   stage_start "post"
-  # UUse newest Model_* directory in /workspace/app/output
-  LATEST_MODEL_DIR="$(ls -1dt "${ABS_OUTPUT}"/Model_* 2>/dev/null | head -n1 || true)"
-  if [[ -z "${LATEST_MODEL_DIR}" ]]; then
-    log "[post] No Model_* directory in ${ABS_OUTPUT} — nothing to process"
+  # Use direct output directory
+  if [[ ! -d "${ABS_OUTPUT}" ]]; then
+    log "[post] Output directory ${ABS_OUTPUT} doesn't exist — nothing to process"
     ST_STATUS[post]="skipped"
-    stage_end "post"
+    CURRENT_STAGE=""
   else
     # point_cloud.ply 
-    if [[ -f "${LATEST_MODEL_DIR}/point_cloud/iteration_30000/point_cloud.ply" ]]; then
-      PLY_IN="${LATEST_MODEL_DIR}/point_cloud/iteration_30000/point_cloud.ply"
+    if [[ -f "${ABS_OUTPUT}/point_cloud/iteration_30000/point_cloud.ply" ]]; then
+      PLY_IN="${ABS_OUTPUT}/point_cloud/iteration_30000/point_cloud.ply"
     else
-      ITER_DIR="$(ls -1d "${LATEST_MODEL_DIR}/point_cloud"/iteration_* 2>/dev/null | sort -V | tail -n1 || true)"
+      ITER_DIR="$(ls -1d "${ABS_OUTPUT}/point_cloud"/iteration_* 2>/dev/null | sort -V | tail -n1 || true)"
       if [[ -n "${ITER_DIR}" && -f "${ITER_DIR}/point_cloud.ply" ]]; then
         PLY_IN="${ITER_DIR}/point_cloud.ply"
       else
-        log "[post] No point_cloud.ply found under ${LATEST_MODEL_DIR}/point_cloud"
+        log "[post] No point_cloud.ply found under ${ABS_OUTPUT}/point_cloud"
         ST_STATUS[post]="skipped"
-        stage_end "post"
-        exit 0
+        CURRENT_STAGE=""
       fi
     fi
     # cameras.json
     # Common locations tried in order:
     for c in \
-      "${LATEST_MODEL_DIR}/cameras.json" \
-      "${LATEST_MODEL_DIR}/scene/cameras.json"
+      "${ABS_OUTPUT}/cameras.json" \
+      "${ABS_OUTPUT}/scene/cameras.json"
     do
       [[ -z "${CAM_JSON:-}" && -f "$c" ]] && CAM_JSON="$c"
     done
     if [[ -z "${CAM_JSON:-}" ]]; then
-      log "[post] cameras.json not found inside ${LATEST_MODEL_DIR}"
+      log "[post] cameras.json not found inside ${ABS_OUTPUT}"
       ST_STATUS[post]="error"
-      exit 1
+      CURRENT_STAGE=""
+      log "[post] Skipping post-processing due to missing cameras.json"
+    else
+      # Output files with predictable, consistent names
+      OUT_PLY="${POST_OUT:-${ABS_OUTPUT}/point_cloud_rotated.ply}"
+      OUT_CAM_JSON="${ABS_OUTPUT}/cameras_rotated.json"
+      OUT_HULL_JSON="${ABS_OUTPUT}/concave_hull.json"
+      
+      log "[post] input PLY      = ${PLY_IN}"
+      log "[post] input cameras  = ${CAM_JSON}"
+      log "[post] output PLY     = ${OUT_PLY}"
+      log "[post] output cameras = ${OUT_CAM_JSON}"
+      log "[post] output hull    = ${OUT_HULL_JSON}"
+      
+      ${RUNPY} /workspace/app/PLYRotConcaveHull.py -i "${PLY_IN}" -c "${CAM_JSON}" -o "${OUT_PLY}"
+      
+      # Verify all outputs were created
+      if [[ -f "${OUT_PLY}" ]]; then
+        log "[post] ✓ Created rotated PLY: ${OUT_PLY}"
+      else
+        log "[post] ⚠ Warning: Rotated PLY not created"
+      fi
+      
+      if [[ -f "${OUT_CAM_JSON}" ]]; then
+        log "[post] ✓ Created rotated cameras: ${OUT_CAM_JSON}"
+      else
+        log "[post] ⚠ Warning: Rotated cameras JSON not created"
+      fi
+      
+      if [[ -f "${OUT_HULL_JSON}" ]]; then
+        log "[post] ✓ Created concave hull: ${OUT_HULL_JSON}"
+      else
+        log "[post] ⚠ Warning: Concave hull JSON not created"
+      fi
+      
+      stage_end "post"
     fi
-    # Output result (override with POST_OUT if you want a different path)
-    OUT_PLY="${POST_OUT:-${LATEST_MODEL_DIR}/a.ply}"
-    log "[post] input  = ${PLY_IN}"
-    log "[post] cams   = ${CAM_JSON}"
-    log "[post] output = ${OUT_PLY}"
-    ${RUNPY} /workspace/app/PLYRotConcaveHull.py -i "${PLY_IN}" -c "${CAM_JSON}" -o "${OUT_PLY}"
-    log "[post] wrote: ${OUT_PLY}"
-    stage_end "post"
   fi
 else
   log "[post] skipped"
 fi
 
-
-# 5) Upload results to S3 if S3_OUTPUT_BUCKET is set
-if [[ -n "${S3_OUTPUT_BUCKET}" ]]; then
-  log "[s3] Uploading results to ${S3_OUTPUT_BUCKET}"
-  
-  # Upload the trained model outputs
-  if [[ -d "output" ]]; then
-    aws s3 sync "output" "${S3_OUTPUT_BUCKET}/${PROJECT}" --region "${AWS_REGION}" --quiet || log "[s3] Warning: output upload had issues"
-    log "[s3] Uploaded output folder"
-  else
-    log "[s3] No output folder to upload"
-  fi
-  
-  # Upload timing and logs
-  if [[ -f "${BASE}/pipeline_times.csv" ]]; then
-    aws s3 cp "${BASE}/pipeline_times.csv" "${S3_OUTPUT_BUCKET}/${PROJECT}/pipeline_times.csv" --region "${AWS_REGION}" --quiet || log "[s3] Warning: CSV upload had issues"
-    aws s3 cp "${BASE}/pipeline_times.txt" "${S3_OUTPUT_BUCKET}/${PROJECT}/pipeline_times.txt" --region "${AWS_REGION}" --quiet || log "[s3] Warning: TXT upload had issues"
-    log "[s3] Uploaded timing logs"
-  fi
-  
-  log "[s3] Upload complete"
-fi
-
+# Script will exit and trigger finalize() which handles S3 upload
 # Explicitly exit with success if we got this far
 exit 0
 
