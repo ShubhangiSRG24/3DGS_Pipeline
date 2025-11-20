@@ -5,6 +5,12 @@ tensorboard_3d/
 data/
 output/
 __pycache__/
+
+# Environment files
+run.env
+*.env
+!run.env.s3.example
+
 # large artifacts
 *.pt
 *.pth
