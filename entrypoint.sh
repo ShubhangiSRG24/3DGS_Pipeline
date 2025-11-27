@@ -9,7 +9,7 @@ fmt_hms() {
 }
 log() { echo -e "$@"; }
 
-STAGES=(extract sfm depth train)
+STAGES=(extract sfm depth train post)
 declare -A ST_START ST_END ST_DUR ST_STATUS
 for s in "${STAGES[@]}"; do ST_START[$s]=""; ST_END[$s]=""; ST_DUR[$s]=0; ST_STATUS[$s]="skipped"; done
 CURRENT_STAGE=""
@@ -220,5 +220,38 @@ if [[ "${SKIP_TRAIN}" != "1" ]]; then
 else
   log "[train] skipped"
 fi
+
+# 5) Post-processing: rotate point cloud using cameras.json
+if [[ "${SKIP_POST:-0}" != "1" ]]; then
+  stage_start "post"
+
+  PLY_SCRIPT="/workspace/app/PLYRotConcaveHull.py"
+  if [[ ! -f "$PLY_SCRIPT" ]]; then
+    log "[post] WARN: $PLY_SCRIPT not found; skipping."
+    stage_end "post"
+  else
+    # Defaults — produced by earlier steps under ${ABS_BASE}
+    PLY_IN="${POST_IN:-${ABS_BASE}/point_cloud.ply}"
+    CAM_JSON="${POST_CAMS:-${ABS_BASE}/cameras.json}"
+    PLY_OUT="${POST_OUT:-${ABS_BASE}/rotated_point_cloud.ply}"
+
+    # Auto-discover if not present
+    [[ -f "$PLY_IN" ]]   || PLY_IN="$(find "$ABS_BASE" -maxdepth 3 -name '*.ply' -print -quit || true)"
+    [[ -f "$CAM_JSON" ]] || CAM_JSON="$(find "$ABS_BASE" -maxdepth 3 -name 'cameras.json' -print -quit || true)"
+
+    if [[ -z "$PLY_IN" || -z "$CAM_JSON" || ! -f "$PLY_IN" || ! -f "$CAM_JSON" ]]; then
+      log "[post] ERROR: Inputs not found — need .ply and cameras.json under ${ABS_BASE}"
+      exit 1
+    fi
+
+    log "[post] python PLYRotConcaveHull.py -i '$PLY_IN' -c '$CAM_JSON' -o '$PLY_OUT'"
+    ${RUNPY} "$PLY_SCRIPT" -i "$PLY_IN" -c "$CAM_JSON" -o "$PLY_OUT"
+    log "[post] wrote: $PLY_OUT"
+    stage_end "post"
+  fi
+else
+  log "[post] skipped"
+fi
+
 
 
