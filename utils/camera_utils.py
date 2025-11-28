@@ -12,16 +12,15 @@
 from scene.cameras import Camera
 import numpy as np
 from utils.graphics_utils import fov2focal
-from PIL import Image
+from PIL import Image, ImageOps
 import cv2
 
 WARNED = False
 
 def loadCam(args, id, cam_info, resolution_scale, is_nerf_synthetic, is_test_dataset):
-    # Load image only to get dimensions, then close it immediately
-    temp_image = Image.open(cam_info.image_path)
-    orig_w, orig_h = temp_image.size
-    temp_image.close()
+    image = Image.open(cam_info.image_path)
+    # Apply EXIF orientation to ensure image is displayed correctly
+    image = ImageOps.exif_transpose(image)
 
     if cam_info.depth_path != "":
         try:
@@ -41,23 +40,28 @@ def loadCam(args, id, cam_info, resolution_scale, is_nerf_synthetic, is_test_dat
             raise
     else:
         invdepthmap = None
-
+        
+    orig_w, orig_h = image.size
     if args.resolution in [1, 2, 4, 8]:
         resolution = round(orig_w/(resolution_scale * args.resolution)), round(orig_h/(resolution_scale * args.resolution))
     else:  # should be a type that converts to float
         if args.resolution == -1:
-            if orig_w > 1600:
+            # Use the longer dimension for scaling decision, but maintain aspect ratio
+            max_dim = max(orig_w, orig_h)
+            if max_dim > 1600:
                 global WARNED
                 if not WARNED:
-                    print("[ INFO ] Encountered quite large input images (>1.6K pixels width), rescaling to 1.6K.\n "
+                    print("[ INFO ] Encountered quite large input images (>1.6K pixels on longer side), rescaling to 1.6K.\n "
                         "If this is not desired, please explicitly specify '--resolution/-r' as 1")
                     WARNED = True
-                global_down = orig_w / 1600
+                global_down = max_dim / 1600
             else:
                 global_down = 1
         else:
-            global_down = orig_w / args.resolution
-
+            # Use the longer dimension for scaling to maintain aspect ratio
+            max_dim = max(orig_w, orig_h)
+            global_down = max_dim / args.resolution
+    
 
         scale = float(global_down) * float(resolution_scale)
         resolution = (int(orig_w / scale), int(orig_h / scale))
