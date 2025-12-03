@@ -15,10 +15,9 @@ import numpy as np
 from utils.graphics_utils import getWorld2View2, getProjectionMatrix
 from utils.general_utils import PILtoTorch
 import cv2
-from PIL import Image
 
 class Camera(nn.Module):
-    def __init__(self, resolution, colmap_id, R, T, FoVx, FoVy, depth_params, image_path, invdepthmap,
+    def __init__(self, resolution, colmap_id, R, T, FoVx, FoVy, depth_params, image, invdepthmap,
                  image_name, uid,
                  trans=np.array([0.0, 0.0, 0.0]), scale=1.0, data_device = "cuda",
                  train_test_exp = False, is_test_dataset = False, is_test_view = False
@@ -32,15 +31,6 @@ class Camera(nn.Module):
         self.FoVx = FoVx
         self.FoVy = FoVy
         self.image_name = image_name
-        self.image_path = image_path
-        self.resolution = resolution
-        self.train_test_exp = train_test_exp
-        self.is_test_dataset = is_test_dataset
-        self.is_test_view = is_test_view
-
-        # Cache for lazy loading
-        self._original_image = None
-        self._alpha_mask = None
 
         try:
             self.data_device = torch.device(data_device)
@@ -49,13 +39,23 @@ class Camera(nn.Module):
             print(f"[Warning] Custom device {data_device} failed, fallback to default cuda device" )
             self.data_device = torch.device("cuda")
 
-        # Load image once to get dimensions, but don't keep it in memory
-        temp_image = Image.open(image_path)
-        resized_image_rgb = PILtoTorch(temp_image, resolution)
-        self.image_width = resized_image_rgb.shape[2]
-        self.image_height = resized_image_rgb.shape[1]
-        temp_image.close()
-        del resized_image_rgb
+        resized_image_rgb = PILtoTorch(image, resolution)
+        gt_image = resized_image_rgb[:3, ...]
+        self.alpha_mask = None
+        if resized_image_rgb.shape[0] == 4:
+            self.alpha_mask = resized_image_rgb[3:4, ...].to(self.data_device)
+        else:
+            self.alpha_mask = torch.ones_like(resized_image_rgb[0:1, ...].to(self.data_device))
+
+        if train_test_exp and is_test_view:
+            if is_test_dataset:
+                self.alpha_mask[..., :self.alpha_mask.shape[-1] // 2] = 0
+            else:
+                self.alpha_mask[..., self.alpha_mask.shape[-1] // 2:] = 0
+
+        self.original_image = gt_image.clamp(0.0, 1.0).to(self.data_device)
+        self.image_width = self.original_image.shape[2]
+        self.image_height = self.original_image.shape[1]
 
         self.invdepthmap = None
         self.depth_reliable = False
@@ -69,7 +69,7 @@ class Camera(nn.Module):
                 if depth_params["scale"] < 0.2 * depth_params["med_scale"] or depth_params["scale"] > 5 * depth_params["med_scale"]:
                     self.depth_reliable = False
                     self.depth_mask *= 0
-                
+
                 if depth_params["scale"] > 0:
                     self.invdepthmap = self.invdepthmap * depth_params["scale"] + depth_params["offset"]
 
@@ -95,38 +95,6 @@ class Camera(nn.Module):
     @property
     def height(self):
         return self.image_height
-
-    @property
-    def original_image(self):
-        if self._original_image is None:
-            self._load_image()
-        return self._original_image
-
-    @property
-    def alpha_mask(self):
-        if self._alpha_mask is None:
-            self._load_image()
-        return self._alpha_mask
-
-    def _load_image(self):
-        """Load image from disk and cache it"""
-        image = Image.open(self.image_path)
-        resized_image_rgb = PILtoTorch(image, self.resolution)
-        gt_image = resized_image_rgb[:3, ...]
-
-        if resized_image_rgb.shape[0] == 4:
-            self._alpha_mask = resized_image_rgb[3:4, ...].to(self.data_device)
-        else:
-            self._alpha_mask = torch.ones_like(resized_image_rgb[0:1, ...].to(self.data_device))
-
-        if self.train_test_exp and self.is_test_view:
-            if self.is_test_dataset:
-                self._alpha_mask[..., :self._alpha_mask.shape[-1] // 2] = 0
-            else:
-                self._alpha_mask[..., self._alpha_mask.shape[-1] // 2:] = 0
-
-        self._original_image = gt_image.clamp(0.0, 1.0).to(self.data_device)
-        image.close()
         
 class MiniCam:
     def __init__(self, width, height, fovy, fovx, znear, zfar, world_view_transform, full_proj_transform):
